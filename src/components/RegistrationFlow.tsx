@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Mail, Phone, User, Heart, Sparkles, Image as ImageIcon, ShieldCheck, CheckCircle2, ArrowRight, ArrowLeft } from 'lucide-react';
+import { Mail, Phone, User, Heart, Sparkles, Image as ImageIcon, ShieldCheck, CheckCircle2, ArrowRight, ArrowLeft, Lock } from 'lucide-react';
 import { UserProfile } from '../types';
 
 interface RegistrationFlowProps {
