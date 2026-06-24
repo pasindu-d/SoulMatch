@@ -20,17 +20,11 @@ export default function MatchesView({ onNavigate, onSelectChatUser }: MatchesVie
         const matchedRelations = data.matches.filter((m: MatchProgress) => m.status === 'matched');
         
         // Fetch full match user profiles from data
-        const list = matchedRelations.map((m: MatchProgress) => {
-          // find the details of the opposite user
-          const matchUser = data.reports.some((r: any) => r.reported_user_id === m.user_b) 
-            ? null // filtered out if reported/blocked for security
-            : m.user_b;
+       const reportedIds = data.reports.map((r: any) => r.reported_user_id);
 
-          return {
-            relation: m,
-            userId: m.user_b
-          };
-        });
+        const matchedRelations = data.matches.filter((m: MatchProgress) => 
+          m.status === 'matched' && !reportedIds.includes(m.user_b)
+        );
 
         // Resolve details for each user
         // In-memory demo retrieval: Query actual user details
