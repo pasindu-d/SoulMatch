@@ -16,6 +16,12 @@ const interceptor = async function (input: RequestInfo | URL, init?: RequestInit
         console.warn(`[API] Endpoint ${url} returned ${response.status}. Falling back to client-side localStorage state.`);
         return await handleClientSideFallback(url, init);
       }
+      // If the response is text/html, it's a SPA routing fallback (like Vercel rewriting 404 APIs to index.html)
+      const contentType = response.headers.get("content-type");
+      if (contentType && contentType.includes("text/html")) {
+        console.warn(`[API] Endpoint ${url} returned HTML instead of JSON. Falling back to client-side localStorage state.`);
+        return await handleClientSideFallback(url, init);
+      }
       return response;
     } catch (err) {
       console.warn(`[API] Connection to ${url} failed. Falling back to client-side localStorage state.`, err);
