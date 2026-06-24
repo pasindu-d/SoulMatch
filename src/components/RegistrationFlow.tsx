@@ -5,6 +5,7 @@ import { UserProfile } from '../types';
 interface RegistrationFlowProps {
   onRegisterComplete: (userData: Partial<UserProfile>) => void;
   initialEmail?: string;
+  currentUser?: UserProfile | null;
 }
 
 const INTERESTS_PRESETS = [
@@ -20,9 +21,10 @@ const PRESET_AVATARS = [
   { url: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&q=80&w=400', label: 'Artist vibe' }
 ];
 
-export default function RegistrationFlow({ onRegisterComplete, initialEmail = '' }: RegistrationFlowProps) {
-  const [step, setStep] = useState(1);
-  const [email, setEmail] = useState(initialEmail);
+export default function RegistrationFlow({ onRegisterComplete, initialEmail = '', currentUser }: RegistrationFlowProps) {
+  const isGoogleSocial = !!(currentUser && currentUser.email);
+  const [step, setStep] = useState(isGoogleSocial ? 3 : 1);
+  const [email, setEmail] = useState(currentUser?.email || initialEmail);
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [phone, setPhone] = useState('');
@@ -30,7 +32,7 @@ export default function RegistrationFlow({ onRegisterComplete, initialEmail = ''
   // Simulated OTP control states
   const [otpSent, setOtpSent] = useState(false);
   const [otpCode, setOtpCode] = useState('');
-  const [otpVerified, setOtpVerified] = useState(false);
+  const [otpVerified, setOtpVerified] = useState(isGoogleSocial);
   const [simulatedOtpHint, setSimulatedOtpHint] = useState('');
   const [isSendingOtp, setIsSendingOtp] = useState(false);
   const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
@@ -40,18 +42,18 @@ export default function RegistrationFlow({ onRegisterComplete, initialEmail = ''
   const [successMessage, setSuccessMessage] = useState('');
   
   // Profile Fields
-  const [fullName, setFullName] = useState('');
-  const [age, setAge] = useState(24);
-  const [gender, setGender] = useState<'Male' | 'Female' | 'Non-binary' | 'Other'>('Male');
-  const [location, setLocation] = useState('San Francisco, CA');
-  const [occupation, setOccupation] = useState('');
-  const [relationshipGoal, setRelationshipGoal] = useState<UserProfile['relationship_goal']>('Long-term partnership');
+  const [fullName, setFullName] = useState(currentUser?.full_name || '');
+  const [age, setAge] = useState(currentUser?.age || 24);
+  const [gender, setGender] = useState<'Male' | 'Female' | 'Non-binary' | 'Other'>(currentUser?.gender || 'Male');
+  const [location, setLocation] = useState(currentUser?.location || 'San Francisco, CA');
+  const [occupation, setOccupation] = useState(currentUser?.occupation || '');
+  const [relationshipGoal, setRelationshipGoal] = useState<UserProfile['relationship_goal']>(currentUser?.relationship_goal || 'Long-term partnership');
   
   // Interests
-  const [selectedInterests, setSelectedInterests] = useState<string[]>(['Hiking', 'Coffee Cuppings']);
+  const [selectedInterests, setSelectedInterests] = useState<string[]>(currentUser?.interests && currentUser.interests.length > 0 ? currentUser.interests : ['Hiking', 'Coffee Cuppings']);
   
   // Photos
-  const [photoUrl, setPhotoUrl] = useState(PRESET_AVATARS[1].url);
+  const [photoUrl, setPhotoUrl] = useState(currentUser?.photo_url || PRESET_AVATARS[1].url);
   
   // Verification
   const [selfieVerified, setSelfieVerified] = useState(false);
@@ -174,7 +176,8 @@ export default function RegistrationFlow({ onRegisterComplete, initialEmail = ''
   const handlePrevStep = () => {
     setErrorMessage('');
     setSuccessMessage('');
-    setStep(Math.max(1, step - 1));
+    const minStep = isGoogleSocial ? 3 : 1;
+    setStep(Math.max(minStep, step - 1));
   };
 
   const handleSelfieVerifySimulator = () => {
@@ -634,7 +637,7 @@ export default function RegistrationFlow({ onRegisterComplete, initialEmail = ''
 
       {/* Navigation triggers */}
       <div id="registration_navs" className="flex items-center justify-between pt-4 border-t border-slate-50">
-        {step > 1 ? (
+        {step > (isGoogleSocial ? 3 : 1) ? (
           <button
             onClick={handlePrevStep}
             className="px-4 py-2 bg-slate-50 hover:bg-slate-100 rounded-xl text-slate-600 font-bold text-xs flex items-center gap-1.5 transition"
