@@ -60,7 +60,7 @@ export default function SubscriptionView({ onPlanUpgraded }: SubscriptionProps) 
         <h2 className="text-3xl md:text-4xl font-black text-slate-800 font-display">
           Elevate Your Search for the Perfect Soul
         </h2>
-        <p className="text-xs text-slate-550 max-w-md mx-auto leading-relaxed">
+        <p className="text-xs text-slate-500 max-w-md mx-auto leading-relaxed">
           Free plans are great to start, but Premium grants you advanced AI matchmaking alignment tools and face-verified priorities!
         </p>
       </div>
@@ -83,7 +83,7 @@ export default function SubscriptionView({ onPlanUpgraded }: SubscriptionProps) 
           <div className="space-y-4">
             <div>
               <h3 className="font-display font-extrabold text-xl text-slate-700">Standard Tier</h3>
-              <p className="text-xs text-slate-450 mt-1">Perfect to experience the SoulMatch playground</p>
+              <p className="text-xs text-slate-400 mt-1">Perfect to experience the SoulMatch playground</p>
             </div>
 
             <div className="flex items-baseline gap-1 py-2">
@@ -123,7 +123,7 @@ export default function SubscriptionView({ onPlanUpgraded }: SubscriptionProps) 
             <div className="flex justify-between items-start">
               <div>
                 <h3 className="font-display font-extrabold text-xl text-brand-100">Premium Member</h3>
-                <p className="text-xs text-slate-350 mt-1">Unleash the full capability of Gemini</p>
+                <p className="text-xs text-slate-300 mt-1">Unleash the full capability of Gemini</p>
               </div>
               <span className="px-2.5 py-1 bg-brand-500 text-white rounded-lg text-[9px] font-black uppercase tracking-widest leading-none">
                 Best Choice
@@ -132,7 +132,7 @@ export default function SubscriptionView({ onPlanUpgraded }: SubscriptionProps) 
 
             <div className="flex items-baseline gap-1 py-2">
               <span className="text-4xl font-extrabold font-display text-white">$19.99</span>
-              <span className="text-xs text-slate-350">/month</span>
+              <span className="text-xs text-slate-300">/month</span>
             </div>
 
             <div className="border-t border-slate-800 pt-4 space-y-3">
