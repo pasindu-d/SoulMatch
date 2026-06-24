@@ -234,7 +234,16 @@ export function initApiMock() {
 
 async function handleMockRequest(url: string, init?: RequestInit): Promise<Response> {
   const method = init?.method?.toUpperCase() || 'GET';
-  const body = init?.body ? JSON.parse(init.body as string) : {};
+   let body: any = {};
+  if (init?.body) {
+    try {
+      if (typeof init.body === 'string') {
+        body = JSON.parse(init.body);
+      }
+    } catch (e) {
+      console.warn("Could not parse request body in mock interceptor", e);
+    }
+  }
   const urlObj = new URL(url, window.location.origin);
   const path = urlObj.pathname;
 
