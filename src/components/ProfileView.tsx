@@ -151,6 +151,55 @@ export default function ProfileView({ onProfileUpdated }: ProfileViewProps) {
     }
   };
 
+  const handleDeleteAccount = async () => {
+    const confirmFirst = window.confirm("Are you absolutely sure you want to delete your account? This action is permanent and cannot be undone.");
+    if (!confirmFirst) return;
+
+    const confirmSecond = window.confirm("This will erase all your matches, chats, and profile data from our system. Confirm final deletion:");
+    if (!confirmSecond) return;
+
+    setLoading(true);
+    try {
+      // 1. Delete from Firebase Authentication (if user exists)
+      try {
+        const { auth, signOut } = await import("../firebase");
+        const { deleteUser } = await import("firebase/auth");
+        const firebaseUser = auth.currentUser;
+        if (firebaseUser) {
+          await deleteUser(firebaseUser);
+        } else {
+          await signOut(auth);
+        }
+      } catch (fbErr: any) {
+        console.warn("Could not delete from Firebase Auth (it might require recent login or cookies are blocked). Signing out instead...", fbErr);
+        if (fbErr.code === "auth/requires-recent-login") {
+          alert("For security reasons, please log out and log back in before deleting your account.");
+          setLoading(false);
+          return;
+        }
+      }
+
+      // 2. Delete from our databases (via API)
+      const res = await fetch("/api/profile/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" }
+      });
+      const data = await res.json();
+      
+      if (data.success) {
+        alert("Your account and all associated data have been completely deleted.");
+        window.location.href = "/";
+      } else {
+        alert(data.error || "Failed to delete account. Please try again.");
+      }
+    } catch (err) {
+      console.error(err);
+      alert("An error occurred during account deletion.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   if (!profile) {
     return (
       <div className="p-12 text-center bg-white border border-slate-100 rounded-2xl">
@@ -206,6 +255,24 @@ export default function ProfileView({ onProfileUpdated }: ProfileViewProps) {
           <p><strong>Goal:</strong> {profile.relationship_goal}</p>
           <p><strong>Style:</strong> {profile.communication_style || 'Not declared'}</p>
           <p><strong>Role:</strong> <span className="text-indigo-600 font-bold uppercase">{profile.personality_type || 'Unknown Analyzer'}</span></p>
+        </div>
+
+        {/* Danger Zone: Delete Account */}
+        <div className="p-4 rounded-xl border border-red-100 bg-red-50/50 space-y-2 text-left">
+          <p className="font-extrabold text-[10px] text-red-550 uppercase tracking-widest flex items-center gap-1">
+            <AlertCircle className="w-3.5 h-3.5" /> Danger Zone
+          </p>
+          <p className="text-[11px] text-slate-500 leading-normal">
+            Deleting your account is permanent. It will immediately and completely erase your profile, matches, messages, and all other data from our database.
+          </p>
+          <button
+            type="button"
+            disabled={loading}
+            onClick={handleDeleteAccount}
+            className="w-full py-2 px-3 bg-red-600 hover:bg-red-700 active:bg-red-800 disabled:bg-slate-300 text-white font-extrabold text-xs rounded-xl transition duration-150 shadow-sm hover:shadow flex items-center justify-center gap-1.5 cursor-pointer"
+          >
+            <Trash2 className="w-4 h-4" /> Delete My Account
+          </button>
         </div>
 
       </aside>
