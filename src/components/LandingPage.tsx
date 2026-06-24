@@ -36,7 +36,8 @@ export default function LandingPage({ onLoginSuccess }: LandingPageProps) {
       const result = await signInWithPopup(auth, googleProvider);
       const email = result.user.email || '';
       
-
+      // Google accounts are inherently pre-verified by the Google identity provider.
+      // We skip manual verification and email blocking to ensure a seamless Google login experience.
       setSuccessMsg(`Welcome, ${result.user.displayName || email}! Loading your profile...`);
 
       // 2. Synchronize the authenticated session with backend
@@ -51,17 +52,19 @@ export default function LandingPage({ onLoginSuccess }: LandingPageProps) {
       });
 
       if (!res.ok) {
-        let errorMsgStr = "Failed to establish a secure database session.";
+        let errorMsgStr = `Failed to establish a secure database session (Status: ${res.status}).`;
         try {
-          const errorData = await res.json();
-          errorMsgStr = errorData.error || errorMsgStr;
-        } catch {
+          const textData = await res.text();
           try {
-            const textData = await res.text();
+            const errorData = JSON.parse(textData);
+            errorMsgStr = errorData.error || errorMsgStr;
+          } catch {
             if (textData) {
               errorMsgStr = textData.slice(0, 150);
             }
-          } catch {}
+          }
+        } catch (readErr: any) {
+          console.error("Failed to read error response:", readErr);
         }
         setErrorMsg(errorMsgStr);
         return;
