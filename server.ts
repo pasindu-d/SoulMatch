@@ -179,6 +179,46 @@ let usersDb: (UserProfile & { email?: string })[] = [
 let currentUserSession: (UserProfile & { email?: string }) | null = null;
 let currentSubscription: Subscription | null = null;
 
+// Helper to resolve the correct session per user via Cookie headers (preventing collision across accounts)
+function getCurrentUser(req: express.Request): (UserProfile & { email?: string }) | null {
+  const cookieHeader = req.headers.cookie;
+  if (cookieHeader) {
+    const match = cookieHeader.match(/(?:^|; )user_id=([^;]*)/);
+    if (match) {
+      const uId = decodeURIComponent(match[1]);
+      const user = usersDb.find(u => u.user_id === uId);
+      if (user) return user;
+    }
+  }
+  return currentUserSession; // Fallback to legacy global session if cookies are disabled
+}
+
+function getCurrentSubscription(user: UserProfile | null): Subscription | null {
+  if (!user) return null;
+  return {
+    subscription_id: 'sub_' + user.user_id,
+    user_id: user.user_id,
+    plan: 'free',
+    expiry_date: '2028-01-01'
+  };
+}
+
+function setUserIdCookie(res: express.Response, userId: string) {
+  res.cookie('user_id', userId, {
+    httpOnly: true,
+    secure: true,
+    sameSite: 'none',
+    maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
+  });
+}
+
+function clearUserIdCookie(res: express.Response) {
+  res.clearCookie('user_id', {
+    secure: true,
+    sameSite: 'none'
+  });
+}
+
 let matchesProgressDb: MatchProgress[] = [
   // pre-liked or pre-matched options
   {
@@ -241,6 +281,8 @@ let questionnaireAnswers: Record<string, string> = {
   'q5': 'Ambiverted: high situational flexibility'
 };
 
+const userAnswersMap = new Map<string, Record<string, string>>();
+
 // HELPER: Calculation of compatibility score
 function calculateBaseCompatibility(userA: UserProfile, userB: UserProfile): number {
   let score = 50; // base score if nothing matches
@@ -273,13 +315,15 @@ function calculateBaseCompatibility(userA: UserProfile, userB: UserProfile): num
 
 // 1. Get entire app state
 app.get("/api/session", (req, res) => {
+  const user = getCurrentUser(req);
+  const answers = user ? (userAnswersMap.get(user.user_id) || { ...questionnaireAnswers }) : questionnaireAnswers;
   res.json({
-    currentUser: currentUserSession,
-    subscription: currentSubscription,
+    currentUser: user,
+    subscription: getCurrentSubscription(user),
     matches: matchesProgressDb,
     messages: messagesDb,
     reports: reportsDb,
-    answers: questionnaireAnswers
+    answers: answers
   });
 });
 
@@ -378,51 +422,63 @@ const activeOtps = new Map<string, string>();
 
 // 2.5 Firebase Google Auth Synchronization
 app.post("/api/auth/firebase-sync", (req, res) => {
-  const { email, displayName, photoURL } = req.body;
-  if (!email) {
-    return res.status(400).json({ error: "Email is required to sync session." });
-  }
+  try {
+    console.log("firebase-sync received body:", req.body);
+    const { email, displayName, photoURL } = req.body || {};
+    if (!email) {
+      console.warn("firebase-sync failed: email is missing");
+      return res.status(400).json({ error: "Email is required to sync session." });
+    }
 
-  const cleanEmail = email.trim().toLowerCase();
-  let user = usersDb.find(u => u.email?.toLowerCase() === cleanEmail);
+    const cleanEmail = email.trim().toLowerCase();
+    let user = usersDb.find(u => u.email?.toLowerCase() === cleanEmail);
 
-  if (!user) {
-    // Automatically provision user entry
-    const newId = 'user_' + Date.now();
-    user = {
-      user_id: newId,
-      email: cleanEmail,
-      full_name: displayName || 'New Soul',
-      age: 27,
-      gender: 'Non-binary',
-      location: 'San Francisco, CA',
-      religion: 'Spiritual',
-      education: 'Undergraduate Degree',
-      occupation: 'Creative Specialist',
-      relationship_goal: 'Long-term partnership',
-      bio: `Hey! I am ${displayName || 'New Soul'}. Excited to join SoulMatch!`,
-      interests: ['Hiking', 'Coffee Cuppings'],
-      profile_completion: 10,
-      verification_status: 'unverified' as const,
-      photo_url: photoURL || 'https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?auto=format&fit=crop&q=80&w=400',
-      photos: [photoURL || 'https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?auto=format&fit=crop&q=80&w=400'],
-      personality_type: 'Adventurous Dreamer',
-      relationship_values: ['Honesty', 'Shared Growth'],
-      lifestyle_habits: ['Active'],
-      communication_style: 'Direct & vocal'
+    if (!user) {
+      console.log("firebase-sync: User not found, provisioning new entry for", cleanEmail);
+      // Automatically provision user entry
+      const newId = 'user_' + Date.now();
+      user = {
+        user_id: newId,
+        email: cleanEmail,
+        full_name: displayName || 'New Soul',
+        age: 27,
+        gender: 'Non-binary',
+        location: 'San Francisco, CA',
+        religion: 'Spiritual',
+        education: 'Undergraduate Degree',
+        occupation: 'Creative Specialist',
+        relationship_goal: 'Long-term partnership',
+        bio: `Hey! I am ${displayName || 'New Soul'}. Excited to join SoulMatch!`,
+        interests: ['Hiking', 'Coffee Cuppings'],
+        profile_completion: 10,
+        verification_status: 'unverified' as const,
+        photo_url: photoURL || 'https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?auto=format&fit=crop&q=80&w=400',
+        photos: [photoURL || 'https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?auto=format&fit=crop&q=80&w=400'],
+        personality_type: 'Adventurous Dreamer',
+        relationship_values: ['Honesty', 'Shared Growth'],
+        lifestyle_habits: ['Active'],
+        communication_style: 'Direct & vocal'
+      };
+      usersDb.push(user);
+    } else {
+      console.log("firebase-sync: Found existing user", user.user_id);
+    }
+
+    currentUserSession = user;
+    currentSubscription = {
+      subscription_id: 'sub_' + user.user_id,
+      user_id: user.user_id,
+      plan: 'free',
+      expiry_date: '2028-01-01'
     };
-    usersDb.push(user);
+
+    setUserIdCookie(res, user.user_id);
+    console.log("firebase-sync success: current user set to", user.user_id);
+    return res.json({ success: true, currentUser: user, subscription: currentSubscription });
+  } catch (err: any) {
+    console.error("Error in firebase-sync:", err);
+    return res.status(500).json({ error: "Server sync exception: " + (err.message || err) });
   }
-
-  currentUserSession = user;
-  currentSubscription = {
-    subscription_id: 'sub_' + user.user_id,
-    user_id: user.user_id,
-    plan: 'free',
-    expiry_date: '2028-01-01'
-  };
-
-  res.json({ success: true, currentUser: currentUserSession, subscription: currentSubscription });
 });
 
 // 3. User Login (Email + Password checking)
@@ -454,7 +510,8 @@ app.post("/api/auth/login", (req, res) => {
     expiry_date: '2028-01-01'
   };
 
-  res.json({ success: true, currentUser: currentUserSession, subscription: currentSubscription });
+  setUserIdCookie(res, user.user_id);
+  res.json({ success: true, currentUser: user, subscription: currentSubscription });
 });
 
 // 3.1 Send OTP Verification Code
@@ -505,6 +562,7 @@ app.post("/api/auth/verify-otp", (req, res) => {
 app.post("/api/auth/logout", (req, res) => {
   currentUserSession = null;
   currentSubscription = null;
+  clearUserIdCookie(res);
   res.json({ success: true });
 });
 
@@ -542,7 +600,8 @@ app.post("/api/register", (req, res) => {
         expiry_date: '2028-01-01'
       };
 
-      return res.json({ success: true, currentUser: currentUserSession, subscription: currentSubscription });
+      setUserIdCookie(res, existingUser.user_id);
+      return res.json({ success: true, currentUser: existingUser, subscription: currentSubscription });
     } else {
       return res.status(400).json({ error: "An account with this email address already exists. Please login instead." });
     }
@@ -590,22 +649,20 @@ app.post("/api/register", (req, res) => {
     expiry_date: '2028-01-01'
   };
 
-  res.json({ success: true, currentUser: currentUserSession, subscription: currentSubscription });
+  setUserIdCookie(res, newUser.user_id);
+  res.json({ success: true, currentUser: newUser, subscription: currentSubscription });
 });
 
 // 4. Update Profile Info
 app.post("/api/profile/update", (req, res) => {
-  if (!currentUserSession) {
+  const user = getCurrentUser(req);
+  if (!user) {
     return res.status(401).json({ error: "Not authenticated. Please log in first." });
   }
   const updates = req.body;
-  currentUserSession = {
-    ...currentUserSession,
-    ...updates
-  };
 
   // Persist directly inside database state
-  const idx = usersDb.findIndex(u => u.user_id === currentUserSession?.user_id);
+  const idx = usersDb.findIndex(u => u.user_id === user.user_id);
   if (idx !== -1) {
     usersDb[idx] = {
       ...usersDb[idx],
@@ -613,47 +670,62 @@ app.post("/api/profile/update", (req, res) => {
     };
   }
 
+  const updatedUser = usersDb[idx] || { ...user, ...updates };
+
   // Recalculate completion
   let count = 5;
-  if (currentUserSession.bio) count++;
-  if (currentUserSession.personality_type) count++;
-  if (currentUserSession.interests.length > 0) count++;
-  if (currentUserSession.communication_style) count++;
-  if (currentUserSession.lifestyle_habits && currentUserSession.lifestyle_habits.length > 0) count++;
+  if (updatedUser.bio) count++;
+  if (updatedUser.personality_type) count++;
+  if (updatedUser.interests && updatedUser.interests.length > 0) count++;
+  if (updatedUser.communication_style) count++;
+  if (updatedUser.lifestyle_habits && updatedUser.lifestyle_habits.length > 0) count++;
   
-  currentUserSession.profile_completion = Math.min(100, Math.floor((count / 10) * 100));
+  updatedUser.profile_completion = Math.min(100, Math.floor((count / 10) * 100));
 
   if (idx !== -1) {
-    usersDb[idx].profile_completion = currentUserSession.profile_completion;
+    usersDb[idx].profile_completion = updatedUser.profile_completion;
   }
 
-  res.json({ success: true, currentUser: currentUserSession });
+  if (currentUserSession && currentUserSession.user_id === user.user_id) {
+    currentUserSession = updatedUser;
+  }
+
+  res.json({ success: true, currentUser: updatedUser });
 });
 
 // 5. Submit Compatibility Answers
 app.post("/api/compatibility/submit", (req, res) => {
-  if (!currentUserSession) {
+  const user = getCurrentUser(req);
+  if (!user) {
     return res.status(401).json({ error: "Not logged in." });
   }
   const { questionId, answer } = req.body;
-  questionnaireAnswers[questionId] = answer;
+  
+  // Get or initialize user-specific answers
+  const answers = userAnswersMap.get(user.user_id) || { ...questionnaireAnswers };
+  answers[questionId] = answer;
+  userAnswersMap.set(user.user_id, answers);
   
   // Calculate profile traits if completed
-  if (Object.keys(questionnaireAnswers).length >= 4) {
-    currentUserSession.personality_type = "Interactive Harmonizer";
-    currentUserSession.lifestyle_habits = ['Balanced planner', 'Curious mind'];
+  if (Object.keys(answers).length >= 4) {
+    user.personality_type = "Interactive Harmonizer";
+    user.lifestyle_habits = ['Balanced planner', 'Curious mind'];
   }
 
-  const idx = usersDb.findIndex(u => u.user_id === currentUserSession?.user_id);
+  const idx = usersDb.findIndex(u => u.user_id === user.user_id);
   if (idx !== -1) {
     usersDb[idx] = {
       ...usersDb[idx],
-      personality_type: currentUserSession.personality_type,
-      lifestyle_habits: currentUserSession.lifestyle_habits
+      personality_type: user.personality_type,
+      lifestyle_habits: user.lifestyle_habits
     };
   }
   
-  res.json({ success: true, answers: questionnaireAnswers, currentUser: currentUserSession });
+  if (currentUserSession && currentUserSession.user_id === user.user_id) {
+    currentUserSession = usersDb[idx] || user;
+  }
+  
+  res.json({ success: true, answers: answers, currentUser: usersDb[idx] || user });
 });
 
 // 6. Suggest Profile Bio (Gemini-powered AI Profile Assistant)
@@ -689,15 +761,20 @@ Make the tone warm, welcoming, deeply human, smart, and free from typical AI cli
 
 // 7. Identity Verification (Simulated Photo verification validation)
 app.post("/api/profile/verify-id", (req, res) => {
-  if (!currentUserSession) {
+  const user = getCurrentUser(req);
+  if (!user) {
     return res.status(401).json({ error: "Please log in first." });
   }
-  currentUserSession.verification_status = 'verified';
+  user.verification_status = 'verified';
   
   // Persist directly inside database state
-  const idx = usersDb.findIndex(u => u.user_id === currentUserSession?.user_id);
+  const idx = usersDb.findIndex(u => u.user_id === user.user_id);
   if (idx !== -1) {
     usersDb[idx].verification_status = 'verified';
+  }
+
+  if (currentUserSession && currentUserSession.user_id === user.user_id) {
+    currentUserSession = usersDb[idx] || user;
   }
 
   res.json({ success: true, status: 'verified' });
@@ -705,13 +782,14 @@ app.post("/api/profile/verify-id", (req, res) => {
 
 // 8. Discover Match Recommendations list
 app.get("/api/discover", (req, res) => {
-  if (!currentUserSession) {
+  const user = getCurrentUser(req);
+  if (!user) {
     return res.json({ success: true, recommended: [] });
   }
   const { genderPreference, minAge, maxAge, verOnly } = req.query;
   
   // Filter other users
-  let candidates = usersDb.filter(u => u.user_id !== currentUserSession!.user_id);
+  let candidates = usersDb.filter(u => u.user_id !== user.user_id);
   
   if (genderPreference && genderPreference !== 'All') {
     candidates = candidates.filter(u => u.gender === genderPreference);
@@ -727,8 +805,8 @@ app.get("/api/discover", (req, res) => {
   }
 
   // Calculate dynamic matching scores
-  const recommended = candidates.map(user => {
-    const score = calculateBaseCompatibility(currentUserSession!, user);
+  const recommended = candidates.map(candidate => {
+    const score = calculateBaseCompatibility(user, candidate);
     
     // Categorize
     let category = "Potential Match";
