@@ -11,7 +11,7 @@ interface HomeViewProps {
 
 export default function HomeView({ currentUser, subscription, onNavigate, matchesCount }: HomeViewProps) {
   // If the user hasn't registered (e.g. simulated as guest, or wants to explore):
-  const isGuest = currentUser.user_id === 'current_user' && currentUser.profile_completion < 10;
+ 
 
   return (
     <div id="home_view_container" className="space-y-10 animate-fade-in">
@@ -61,13 +61,13 @@ export default function HomeView({ currentUser, subscription, onNavigate, matche
           className="p-6 bg-white rounded-2xl border border-slate-100 hover:border-brand-100 transition shadow-sm cursor-pointer hover:translate-y-[-2px]"
         >
           <div className="flex items-center justify-between pb-4">
-            <span className="text-xs font-medium text-slate-400 uppercase tracking-widest">Discover Feed</span>
+            <span className="text-xs font-medium  uppercase tracking-widest">Discover Feed</span>
             <div className="p-2.5 rounded-xl bg-rose-50 text-brand-500">
               <Compass className="w-5 h-5" />
             </div>
           </div>
           <h3 className="text-2xl font-bold font-display text-slate-800">Browse</h3>
-          <p className="text-xs text-slate-400 mt-1">Unlock AI smart predictions</p>
+          <p className="text-xs  mt-1">Unlock AI smart predictions</p>
         </div>
 
         <div 
