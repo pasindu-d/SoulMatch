@@ -18,6 +18,15 @@ export default function ProfileView({ onProfileUpdated }: ProfileViewProps) {
   const [relationshipGoal, setRelationshipGoal] = useState<any>('Long-term partnership');
   const [interestsText, setInterestsText] = useState('');
 
+  // Account Deletion States
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteOtp, setDeleteOtp] = useState('');
+  const [deleteOtpSent, setDeleteOtpSent] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [deleteSuccess, setDeleteSuccess] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
+  const [simulatedOtp, setSimulatedOtp] = useState('');
+
   // AI assistant writing
   const [isSuggestingBio, setIsSuggestingBio] = useState(false);
   const [aiBioResult, setAiBioResult] = useState('');
@@ -151,16 +160,40 @@ export default function ProfileView({ onProfileUpdated }: ProfileViewProps) {
     }
   };
 
-  const handleDeleteAccount = async () => {
-    const confirmFirst = window.confirm("Are you absolutely sure you want to delete your account? This action is permanent and cannot be undone.");
-    if (!confirmFirst) return;
-
-    const confirmSecond = window.confirm("This will erase all your matches, chats, and profile data from our system. Confirm final deletion:");
-    if (!confirmSecond) return;
-
-    setLoading(true);
+  const triggerSendDeleteOtp = async () => {
+    setDeleteError('');
+    setDeleteLoading(true);
     try {
-      // 1. Delete from Firebase Authentication (if user exists)
+      const res = await fetch("/api/profile/send-delete-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" }
+      });
+      const data = await res.json();
+      if (data.success) {
+        setDeleteOtpSent(true);
+        if (data.otp) {
+          setSimulatedOtp(data.otp);
+        }
+      } else {
+        setDeleteError(data.error || "Failed to send verification code.");
+      }
+    } catch (err) {
+      console.error(err);
+      setDeleteError("An error occurred while sending code.");
+    } finally {
+      setDeleteLoading(false);
+    }
+  };
+
+  const confirmDeleteAccount = async () => {
+    if (!deleteOtp) {
+      setDeleteError("Please enter the 6-digit confirmation code.");
+      return;
+    }
+    setDeleteError('');
+    setDeleteLoading(true);
+    try {
+      // 1. Delete from Firebase Authentication if active in client
       try {
         const { auth, signOut } = await import("../firebase");
         const { deleteUser } = await import("firebase/auth");
@@ -171,33 +204,37 @@ export default function ProfileView({ onProfileUpdated }: ProfileViewProps) {
           await signOut(auth);
         }
       } catch (fbErr: any) {
-        console.warn("Could not delete from Firebase Auth (it might require recent login or cookies are blocked). Signing out instead...", fbErr);
+        console.warn("Could not delete from Firebase Auth (might require recent login or offline fallback). Signing out instead...", fbErr);
         if (fbErr.code === "auth/requires-recent-login") {
-          alert("For security reasons, please log out and log back in before deleting your account.");
-          setLoading(false);
+          setDeleteError("For security reasons, please log out and log back in before deleting your account.");
+          setDeleteLoading(false);
           return;
         }
       }
 
-      // 2. Delete from our databases (via API)
+      // 2. Delete from our databases (via API, with OTP confirmation)
       const res = await fetch("/api/profile/delete", {
         method: "POST",
-        headers: { "Content-Type": "application/json" }
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ otp: deleteOtp })
       });
       const data = await res.json();
       
       if (data.success) {
-        alert("Your account and all associated data have been completely deleted.");
-        window.location.href = "/";
+        setDeleteSuccess(true);
       } else {
-        alert(data.error || "Failed to delete account. Please try again.");
+        setDeleteError(data.error || "Failed to delete account. Please try again.");
       }
     } catch (err) {
       console.error(err);
-      alert("An error occurred during account deletion.");
+      setDeleteError("An error occurred during account deletion.");
     } finally {
-      setLoading(false);
+      setDeleteLoading(false);
     }
+  };
+
+  const handleCloseSuccessRedirect = () => {
+    window.location.href = "/";
   };
 
   if (!profile) {
@@ -268,7 +305,14 @@ export default function ProfileView({ onProfileUpdated }: ProfileViewProps) {
           <button
             type="button"
             disabled={loading}
-            onClick={handleDeleteAccount}
+            onClick={() => {
+              setShowDeleteModal(true);
+              setDeleteOtpSent(false);
+              setDeleteOtp('');
+              setDeleteError('');
+              setDeleteSuccess(false);
+              setSimulatedOtp('');
+            }}
             className="w-full py-2 px-3 bg-red-600 hover:bg-red-700 active:bg-red-800 disabled:bg-slate-300 text-white font-extrabold text-xs rounded-xl transition duration-150 shadow-sm hover:shadow flex items-center justify-center gap-1.5 cursor-pointer"
           >
             <Trash2 className="w-4 h-4" /> Delete My Account
@@ -638,6 +682,157 @@ export default function ProfileView({ onProfileUpdated }: ProfileViewProps) {
         </section>
 
       </main>
+
+      {/* Account Deletion Modal Overlay */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-100 animate-in fade-in zoom-in duration-200">
+            
+            {/* Header */}
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-2.5 rounded-full bg-red-100 text-red-600">
+                <Trash2 className="w-6 h-6" />
+              </div>
+              <h3 className="text-lg font-extrabold text-slate-900">Delete Account</h3>
+            </div>
+
+            {/* Warning Message */}
+            <div className="mb-5 text-sm text-slate-600 bg-red-50/50 p-4 rounded-xl border border-red-100/50">
+              <p className="font-semibold text-slate-800 mb-1">Warning:</p>
+              <p className="leading-relaxed">
+                This action is permanent and cannot be undone. Your profile, matches, chats, photos, and personal information will be removed from the platform.
+              </p>
+            </div>
+
+            {/* Modal Body / Steps */}
+            {!deleteSuccess ? (
+              <div className="space-y-4">
+                {/* Step 1: Send OTP */}
+                {!deleteOtpSent ? (
+                  <div className="space-y-3">
+                    <p className="text-xs text-slate-500 leading-normal">
+                      To protect your account security, we will send a 6-digit confirmation code to your registered email address (<strong>{profile.email || "your registered email"}</strong>).
+                    </p>
+                    <button
+                      type="button"
+                      disabled={deleteLoading}
+                      onClick={triggerSendDeleteOtp}
+                      className="w-full py-2.5 px-4 bg-slate-900 hover:bg-slate-800 text-white font-extrabold text-xs rounded-xl transition disabled:bg-slate-300 flex items-center justify-center gap-2 cursor-pointer"
+                    >
+                      {deleteLoading ? (
+                        <span className="w-4 h-4 rounded-full border-2 border-white border-t-transparent animate-spin" />
+                      ) : (
+                        "Send Verification Code"
+                      )}
+                    </button>
+                  </div>
+                ) : (
+                  // Step 2: Input and verify OTP
+                  <div className="space-y-3">
+                    <p className="text-xs text-slate-500">
+                      We've sent a 6-digit verification code to <strong>{profile.email}</strong>. Enter it below to confirm your identity.
+                    </p>
+                    
+                    {/* Simulated Telemetry Assistance */}
+                    {simulatedOtp && (
+                      <div className="bg-amber-50 text-amber-800 p-3 rounded-xl border border-amber-100 text-xs flex flex-col gap-1">
+                        <span className="font-extrabold uppercase tracking-wider text-[10px] text-amber-600">Simulated Telemetry OTP Code:</span>
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                          <code className="bg-white px-2 py-0.5 rounded border border-amber-200 font-mono font-bold text-sm tracking-widest">{simulatedOtp}</code>
+                          <span className="text-[10px] text-amber-600">(Copied from simulated mailbox log)</span>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="space-y-1.5 text-left">
+                      <label className="block text-[11px] font-extrabold text-slate-500 uppercase tracking-wider">
+                        6-Digit Confirmation Code
+                      </label>
+                      <input
+                        type="text"
+                        maxLength={6}
+                        placeholder="Enter 6-digit code"
+                        value={deleteOtp}
+                        onChange={(e) => setDeleteOtp(e.target.value.replace(/\D/g, ''))}
+                        disabled={deleteLoading}
+                        className="w-full text-center tracking-[0.2em] font-mono font-bold text-lg p-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500 bg-slate-50 disabled:bg-slate-100 text-slate-800"
+                      />
+                    </div>
+
+                    {deleteError && (
+                      <p className="text-xs font-bold text-red-600 flex items-center gap-1">
+                        <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" /> {deleteError}
+                      </p>
+                    )}
+
+                    <div className="flex gap-3 pt-2">
+                      <button
+                        type="button"
+                        disabled={deleteLoading}
+                        onClick={() => {
+                          setDeleteOtpSent(false);
+                          setSimulatedOtp('');
+                        }}
+                        className="flex-1 py-2.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition disabled:opacity-50"
+                      >
+                        Back
+                      </button>
+                      <button
+                        type="button"
+                        disabled={deleteLoading || deleteOtp.length < 6}
+                        onClick={confirmDeleteAccount}
+                        className="flex-1 py-2.5 px-4 bg-red-600 hover:bg-red-700 disabled:bg-slate-300 text-white font-extrabold text-xs rounded-xl transition flex items-center justify-center gap-2"
+                      >
+                        {deleteLoading ? (
+                          <span className="w-4 h-4 rounded-full border-2 border-white border-t-transparent animate-spin" />
+                        ) : (
+                          "Confirm Deletion"
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* General Cancel button shown if not waiting for verification code confirmation action */}
+                {!deleteOtpSent && (
+                  <div className="flex gap-3 pt-2 border-t border-slate-100">
+                    <button
+                      type="button"
+                      disabled={deleteLoading}
+                      onClick={() => setShowDeleteModal(false)}
+                      className="w-full py-2.5 bg-slate-50 hover:bg-slate-100 text-slate-600 font-bold text-xs rounded-xl transition disabled:opacity-50"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                )}
+              </div>
+            ) : (
+              // Step 3: Success Screen
+              <div className="space-y-4 text-center py-4">
+                <div className="w-12 h-12 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto text-xl font-bold mb-2">
+                  ✓
+                </div>
+                <p className="text-sm font-extrabold text-slate-800">
+                  Your account has been permanently deleted.
+                </p>
+                <p className="text-xs text-slate-500">
+                  You have been safely signed out. Thank you for being a part of SoulMatch.
+                </p>
+                <button
+                  type="button"
+                  onClick={handleCloseSuccessRedirect}
+                  className="w-full mt-4 py-2.5 px-4 bg-slate-900 hover:bg-slate-800 text-white font-extrabold text-xs rounded-xl transition animate-pulse"
+                >
+                  Return to Home
+                </button>
+              </div>
+            )}
+
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
