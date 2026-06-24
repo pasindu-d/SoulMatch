@@ -34,22 +34,21 @@ export default function MatchesView({ onNavigate, onSelectChatUser }: MatchesVie
 
         // Resolve details for each user
         // In-memory demo retrieval: Query actual user details
-        const detailsPromises = list.map(async (item: any) => {
-          const detailRes = await fetch(`/api/discover`);
-          const detailData = await detailRes.json();
-          const found = detailData.recommended.find((u: any) => u.user_id === item.userId);
-          
+        const detailRes = await fetch(`/api/discover`);
+        const detailData = await detailRes.json();
+        
+        const resolved = matchedRelations.map((m: MatchProgress) => {
+          const found = detailData.recommended.find((u: any) => u.user_id === m.user_b);
           if (found) {
             return {
               ...found,
-              compatibility_score: item.relation.compatibility_score,
-              created_at: item.relation.created_at
+              compatibility_score: m.compatibility_score,
+              created_at: m.created_at
             };
           }
           return null;
-        });
-
-        const resolved = (await Promise.all(detailsPromises)).filter(u => u !== null);
+        }).filter((u: any) => u !== null);
+        
         setMatches(resolved);
       }
     } catch (err) {
