@@ -308,7 +308,7 @@ export default function App() {
               <h2 className="text-2xl font-extrabold font-display text-slate-800">Quick Profile Registration Required</h2>
               <p className="text-xs text-slate-400 mb-2">Initialize your values and photos to active the AI matching advisor matrix!</p>
             </div>
-            <RegistrationFlow onRegisterComplete={handleRegisterComplete} initialEmail={initialRegisterEmail} />
+            <RegistrationFlow onRegisterComplete={handleRegisterComplete} initialEmail={initialRegisterEmail} currentUser={currentUser} />
           </div>
         ) : (
           <>
@@ -322,7 +322,7 @@ export default function App() {
             )}
 
             {activeView === 'registration' && (
-              <RegistrationFlow onRegisterComplete={handleRegisterComplete} />
+              <RegistrationFlow onRegisterComplete={handleRegisterComplete} currentUser={currentUser} />
             )}
 
             {activeView === 'discover' && (
