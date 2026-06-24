@@ -182,7 +182,7 @@ export default function App() {
                     }}
                     className={`px-4 py-2 rounded-xl text-xs font-bold tracking-wide transition flex items-center gap-1.5 ${
                       isActive 
-                        ? 'bg-slate-905 bg-slate-900 text-white shadow-sm' 
+                        ? 'bg-slate-900 text-white shadow-sm' 
                         : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
                     }`}
                   >
