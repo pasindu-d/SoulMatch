@@ -35,15 +35,7 @@ export default function LandingPage({ onLoginSuccess }: LandingPageProps) {
     try {
       const result = await signInWithPopup(auth, googleProvider);
       const email = result.user.email || '';
-      const isVerified = result.user.emailVerified;
-
-      // 1. Enforce email verification check
-      if (!isVerified) {
-        await sendEmailVerification(result.user);
-        await auth.signOut();
-        setErrorMsg('Your Google email address is not verified yet. We have sent a verification link to your email inbox. Please click the link to verify your account, then try logging in again.');
-        return;
-      }
+      
 
       setSuccessMsg(`Welcome, ${result.user.displayName || email}! Loading your profile...`);
 
