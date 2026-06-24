@@ -313,7 +313,7 @@ export default function App() {
           </div>
         ) : (
           <>
-            {activeView === 'home' && (
+            {activeView === 'home' && subscription &&  (
               <HomeView 
                 currentUser={currentUser} 
                 subscription={subscription} 
