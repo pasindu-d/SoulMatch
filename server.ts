@@ -693,6 +693,40 @@ app.post("/api/profile/update", (req, res) => {
   res.json({ success: true, currentUser: updatedUser });
 });
 
+// 4b. Delete Profile / Account
+app.post("/api/profile/delete", (req, res) => {
+  const user = getCurrentUser(req);
+  if (!user) {
+    return res.status(401).json({ error: "Not authenticated. Please log in first." });
+  }
+  const userId = user.user_id;
+
+  // 1. Delete user from usersDb
+  usersDb = usersDb.filter(u => u.user_id !== userId);
+
+  // 2. Delete matches from matchesProgressDb
+  matchesProgressDb = matchesProgressDb.filter(m => m.user_a !== userId && m.user_b !== userId);
+
+  // 3. Delete messages from messagesDb
+  messagesDb = messagesDb.filter(msg => msg.sender_id !== userId && msg.receiver_id !== userId);
+
+  // 4. Delete reports from reportsDb
+  reportsDb = reportsDb.filter(r => r.reporter_id !== userId && r.reported_user_id !== userId);
+
+  // 5. Delete answers
+  userAnswersMap.delete(userId);
+
+  // 6. Reset global legacy session if it was this user
+  if (currentUserSession && currentUserSession.user_id === userId) {
+    currentUserSession = null;
+  }
+
+  // 7. Clear the session cookie
+  clearUserIdCookie(res);
+
+  res.json({ success: true, message: "Account successfully deleted." });
+});
+
 // 5. Submit Compatibility Answers
 app.post("/api/compatibility/submit", (req, res) => {
   const user = getCurrentUser(req);
