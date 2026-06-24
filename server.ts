@@ -693,38 +693,111 @@ app.post("/api/profile/update", (req, res) => {
   res.json({ success: true, currentUser: updatedUser });
 });
 
-// 4b. Delete Profile / Account
+// 4b. Send Delete Account OTP
+app.post("/api/profile/send-delete-otp", (req, res) => {
+  const user = getCurrentUser(req);
+  if (!user) {
+    return res.status(401).json({ error: "Not authenticated. Please log in first." });
+  }
+  const email = user.email;
+  if (!email) {
+    return res.status(400).json({ error: "No email address found on your profile." });
+  }
+  const cleanEmail = email.trim().toLowerCase();
+  
+  // Generate a random 6-digit number
+  const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
+  activeOtps.set(cleanEmail, otpCode);
+
+  console.log(`[SOULMATCH TELEMETRY] Sent deletion OTP code: ${otpCode} to: ${cleanEmail}`);
+
+  res.json({ 
+    success: true, 
+    otp: otpCode, 
+    message: "Deletion confirmation code sent successfully." 
+  });
+});
+
+// 4c. Delete Profile / Account
 app.post("/api/profile/delete", (req, res) => {
   const user = getCurrentUser(req);
   if (!user) {
     return res.status(401).json({ error: "Not authenticated. Please log in first." });
   }
+  const { otp } = req.body;
+  if (!otp) {
+    return res.status(400).json({ error: "Verification OTP code is required." });
+  }
+
+  const email = user.email;
+  if (!email) {
+    return res.status(400).json({ error: "No email address found on your profile." });
+  }
+  const cleanEmail = email.trim().toLowerCase();
+  const validOtp = activeOtps.get(cleanEmail);
+
+  if (!validOtp || validOtp !== otp.trim()) {
+    return res.status(400).json({ error: "Invalid verification code. Please input the correct 6-digit code." });
+  }
+
   const userId = user.user_id;
 
-  // 1. Delete user from usersDb
-  usersDb = usersDb.filter(u => u.user_id !== userId);
+  // 1. Anonymize user in usersDb (Option A)
+  usersDb = usersDb.map(u => {
+    if (u.user_id === userId) {
+      return {
+        user_id: userId,
+        full_name: "Deleted User",
+        email: `deleted_${userId}@soulmatch.com`,
+        age: 0,
+        gender: "Other",
+        location: "",
+        religion: "",
+        education: "",
+        occupation: "",
+        relationship_goal: "New friends",
+        bio: "This account has been deleted.",
+        interests: [],
+        profile_completion: 0,
+        verification_status: "unverified",
+        photo_url: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=200",
+        photos: [],
+        personality_type: "Deleted Account",
+        relationship_values: [],
+        lifestyle_habits: [],
+        communication_style: "",
+        password: ""
+      };
+    }
+    return u;
+  });
 
-  // 2. Delete matches from matchesProgressDb
-  matchesProgressDb = matchesProgressDb.filter(m => m.user_a !== userId && m.user_b !== userId);
+  // 2. Clear non-matched entries, but KEEP matched progresses for Option A
+  matchesProgressDb = matchesProgressDb.filter(m => {
+    const isInvolved = m.user_a === userId || m.user_b === userId;
+    if (isInvolved) {
+      return m.status === 'matched';
+    }
+    return true;
+  });
 
-  // 3. Delete messages from messagesDb
-  messagesDb = messagesDb.filter(msg => msg.sender_id !== userId && msg.receiver_id !== userId);
+  // 3. Remove reports submitted by the user
+  reportsDb = reportsDb.filter(r => r.reporter_id !== userId);
 
-  // 4. Delete reports from reportsDb
-  reportsDb = reportsDb.filter(r => r.reporter_id !== userId && r.reported_user_id !== userId);
-
-  // 5. Delete answers
+  // 4. Delete answers
   userAnswersMap.delete(userId);
 
-  // 6. Reset global legacy session if it was this user
+  activeOtps.delete(cleanEmail);
+
+  // 5. Reset global legacy session if it was this user
   if (currentUserSession && currentUserSession.user_id === userId) {
     currentUserSession = null;
   }
 
-  // 7. Clear the session cookie
+  // 6. Clear the session cookie
   clearUserIdCookie(res);
 
-  res.json({ success: true, message: "Account successfully deleted." });
+  res.json({ success: true, message: "Your account has been permanently deleted." });
 });
 
 // 5. Submit Compatibility Answers
