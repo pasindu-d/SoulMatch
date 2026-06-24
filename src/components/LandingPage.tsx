@@ -51,8 +51,19 @@ export default function LandingPage({ onLoginSuccess }: LandingPageProps) {
       });
 
       if (!res.ok) {
-        const errorData = await res.json();
-        setErrorMsg(errorData.error || "Failed to establish a secure database session.");
+        let errorMsgStr = "Failed to establish a secure database session.";
+        try {
+          const errorData = await res.json();
+          errorMsgStr = errorData.error || errorMsgStr;
+        } catch {
+          try {
+            const textData = await res.text();
+            if (textData) {
+              errorMsgStr = textData.slice(0, 150);
+            }
+          } catch {}
+        }
+        setErrorMsg(errorMsgStr);
         return;
       }
 
