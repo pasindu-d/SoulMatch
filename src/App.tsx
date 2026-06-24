@@ -101,7 +101,6 @@ export default function App() {
       if (data.success) {
         setCurrentUser(null);
         setSubscription(null);
-        localStorage.clear();
         await fetchSessionData();
         setActiveView('home');
         alert("Session state has been completely reset back to defaults!");
