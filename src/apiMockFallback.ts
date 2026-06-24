@@ -187,6 +187,8 @@ let questionnaireAnswers = loadData<Record<string, string>>("questionnaireAnswer
   'q5': 'Ambiverted: high situational flexibility'
 });
 
+let activeDeleteOtps = new Map<string, string>();
+
 function calculateBaseCompatibility(userA: UserProfile | null, userB: UserProfile): number {
   if (!userA) return 75;
   let score = 55;
@@ -438,33 +440,95 @@ export async function handleClientSideFallback(urlStr: string, init?: RequestIni
     return jsonResponse({ success: true, currentUser: currentUserSession });
   }
 
+  if (path === "/api/profile/send-delete-otp") {
+    if (!currentUserSession) {
+      return jsonResponse({ error: "Not authenticated" }, 401);
+    }
+    const email = currentUserSession.email || "user@example.com";
+    const cleanEmail = email.trim().toLowerCase();
+    
+    const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
+    activeDeleteOtps.set(cleanEmail, otpCode);
+
+    console.log(`[SOULMATCH TELEMETRY FALLBACK] Sent deletion OTP code: ${otpCode} to: ${cleanEmail}`);
+    return jsonResponse({
+      success: true,
+      otp: otpCode,
+      message: "Deletion confirmation code sent successfully."
+    });
+  }
+
   if (path === "/api/profile/delete") {
     if (!currentUserSession) {
       return jsonResponse({ error: "Not authenticated" }, 401);
     }
+    const { otp } = body;
+    if (!otp) {
+      return jsonResponse({ error: "Verification OTP code is required." }, 400);
+    }
+
+    const email = currentUserSession.email || "user@example.com";
+    const cleanEmail = email.trim().toLowerCase();
+    const validOtp = activeDeleteOtps.get(cleanEmail);
+
+    if (!validOtp || validOtp !== otp.trim()) {
+      return jsonResponse({ error: "Invalid verification code. Please input the correct 6-digit code." }, 400);
+    }
+
     const userId = currentUserSession.user_id;
 
-    // Remove user
-    usersDb = usersDb.filter(u => u.user_id !== userId);
+    // 1. Anonymize user in usersDb (Option A)
+    usersDb = usersDb.map(u => {
+      if (u.user_id === userId) {
+        return {
+          user_id: userId,
+          full_name: "Deleted User",
+          email: `deleted_${userId}@soulmatch.com`,
+          age: 0,
+          gender: "Other",
+          location: "",
+          religion: "",
+          education: "",
+          occupation: "",
+          relationship_goal: "New friends",
+          bio: "This account has been deleted.",
+          interests: [],
+          profile_completion: 0,
+          verification_status: "unverified",
+          photo_url: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=200",
+          photos: [],
+          personality_type: "Deleted Account",
+          relationship_values: [],
+          lifestyle_habits: [],
+          communication_style: "",
+          password: ""
+        };
+      }
+      return u;
+    });
     saveData("usersDb", usersDb);
 
-    // Remove matches
-    matchesProgressDb = matchesProgressDb.filter(m => m.user_a !== userId && m.user_b !== userId);
+    // 2. Clear non-matched entries, but KEEP matched progresses for Option A
+    matchesProgressDb = matchesProgressDb.filter(m => {
+      const isInvolved = m.user_a === userId || m.user_b === userId;
+      if (isInvolved) {
+        return m.status === 'matched';
+      }
+      return true;
+    });
     saveData("matchesProgressDb", matchesProgressDb);
 
-    // Remove messages
-    messagesDb = messagesDb.filter(msg => msg.sender_id !== userId && msg.receiver_id !== userId);
-    saveData("messagesDb", messagesDb);
-
-    // Remove reports
-    reportsDb = reportsDb.filter(r => r.reporter_id !== userId && r.reported_user_id !== userId);
+    // 3. Remove reports submitted by the user
+    reportsDb = reportsDb.filter(r => r.reporter_id !== userId);
     saveData("reportsDb", reportsDb);
+
+    activeDeleteOtps.delete(cleanEmail);
 
     // Reset current user session
     currentUserSession = null;
     localStorage.removeItem(STORAGE_PREFIX + "currentUserSession");
 
-    return jsonResponse({ success: true, message: "Account successfully deleted." });
+    return jsonResponse({ success: true, message: "Your account has been permanently deleted." });
   }
 
   if (path === "/api/compatibility/submit") {
