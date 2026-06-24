@@ -438,6 +438,35 @@ export async function handleClientSideFallback(urlStr: string, init?: RequestIni
     return jsonResponse({ success: true, currentUser: currentUserSession });
   }
 
+  if (path === "/api/profile/delete") {
+    if (!currentUserSession) {
+      return jsonResponse({ error: "Not authenticated" }, 401);
+    }
+    const userId = currentUserSession.user_id;
+
+    // Remove user
+    usersDb = usersDb.filter(u => u.user_id !== userId);
+    saveData("usersDb", usersDb);
+
+    // Remove matches
+    matchesProgressDb = matchesProgressDb.filter(m => m.user_a !== userId && m.user_b !== userId);
+    saveData("matchesProgressDb", matchesProgressDb);
+
+    // Remove messages
+    messagesDb = messagesDb.filter(msg => msg.sender_id !== userId && msg.receiver_id !== userId);
+    saveData("messagesDb", messagesDb);
+
+    // Remove reports
+    reportsDb = reportsDb.filter(r => r.reporter_id !== userId && r.reported_user_id !== userId);
+    saveData("reportsDb", reportsDb);
+
+    // Reset current user session
+    currentUserSession = null;
+    localStorage.removeItem(STORAGE_PREFIX + "currentUserSession");
+
+    return jsonResponse({ success: true, message: "Account successfully deleted." });
+  }
+
   if (path === "/api/compatibility/submit") {
     if (!currentUserSession) {
       return jsonResponse({ error: "Not logged in" }, 401);
